@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, nocache">
+<title>Substance D — Scanner Killer v3.0</title>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { overflow: hidden; background: #1a0f0a; }
+body {
+  width: 100vw; height: 100vh; background: #1a0f0a; overflow: hidden; cursor: none;
+  font-family: 'Courier New', monospace; color: #ff9933; user-select: none;
+}
+.layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+#layer-rotoscope { z-index: 1; } #layer-scramble { z-index: 2; } #layer-hallucination { z-index: 3; }
+#layer-identity { z-index: 4; } #layer-substance { z-index: 5; } #layer-overlay { z-index: 6; }
+#layer-anti { z-index: 7; } #layer-ui { z-index: 100; pointer-events: auto; }
+
+#rotoscopeCanvas { width: 100%; height: 100%; image-rendering: pixelated; }
+
+.scramble-fragment {
+  position: absolute; border: 1px solid rgba(255,153,51,0.3);
+  background: rgba(255,153,51,0.05);
+  animation: scrambleMorph var(--dur) steps(2) infinite;
+  mix-blend-mode: screen;
+}
+@keyframes scrambleMorph {
+  0% { transform: translate(0,0) scale(1) rotate(0deg); opacity: var(--base-op); filter: hue-rotate(0deg) blur(0px); }
+  50% { transform: translate(var(--tx),var(--ty)) scale(var(--s)) rotate(var(--r)); opacity: calc(var(--base-op) * 2); filter: hue-rotate(180deg) blur(1px); }
+  100% { transform: translate(0,0) scale(1) rotate(0deg); opacity: var(--base-op); filter: hue-rotate(360deg) blur(0px); }
+}
+
+.substance-particle {
+  position: absolute; width: 3px; height: 3px;
+  background: radial-gradient(circle, #ff6600, #ff9933, transparent);
+  border-radius: 50%; animation: substanceFloat var(--dur) ease-in-out infinite;
+  box-shadow: 0 0 6px #ff6600;
+}
+@keyframes substanceFloat {
+  0%,100% { transform: translateY(0) scale(0.5); opacity: 0; }
+  25% { opacity: 1; } 50% { transform: translateY(-50px) scale(1.5); opacity: 0.8; }
+  75% { opacity: 1; }
+}
+
+.identity-shard {
+  position: absolute; font-family: 'Courier New', monospace; font-size: 10px;
+  color: rgba(255,153,51,0.15); white-space: nowrap;
+  animation: shardDrift var(--dur) linear infinite;
+  text-shadow: 0 0 4px rgba(255,102,0,0.3);
+}
+@keyframes shardDrift {
+  0% { transform: translateX(-100px) rotate(0deg); opacity: 0; }
+  10% { opacity: 0.5; } 90% { opacity: 0.5; }
+  100% { transform: translateX(calc(100vw + 100px)) rotate(360deg); opacity: 0; }
+}
+
+.edge-glow {
+  position: absolute; border: 1px solid rgba(255,102,0,0.2);
+  box-shadow: 0 0 8px rgba(255,102,0,0.3), inset 0 0 8px rgba(255,102,0,0.1);
+  animation: edgePulse var(--dur) ease-in-out infinite;
+}
+@keyframes edgePulse {
+  0%,100% { opacity: 0.3; border-color: rgba(255,102,0,0.2); }
+  50% { opacity: 0.7; border-color: rgba(255,153,51,0.5); }
+}
+
+.scanner-beam {
+  position: absolute; width: 2px;
+  background: linear-gradient(to bottom, transparent, #ff6600, #ff9933, transparent);
+  animation: beamScan var(--dur) linear infinite; opacity: 0.4;
+  box-shadow: 0 0 10px #ff6600;
+}
+@keyframes beamScan {
+  0% { transform: translateY(-100vh); height: 0; opacity: 0; }
+  20% { opacity: 0.4; height: 100px; }
+  80% { opacity: 0.4; height: 100px; }
+  100% { transform: translateY(100vh); height: 0; opacity: 0; }
+}
+
+.anti-devtools-flash {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 999;
+  animation: antiFlash 0.3s steps(1) infinite;
+  display: none;
+}
+@keyframes antiFlash {
+  0% { background: rgba(255,0,0,0.3); }
+  50% { background: rgba(255,102,0,0.5); }
+  100% { background: rgba(255,0,0,0.3); }
+}
+
+/* === LIVE CONFIG PANEL === */
+.config-panel {
+  position: fixed; top: 20px; right: 20px;
+  background: rgba(26,15,10,0.95); border: 1px solid #ff9933;
+  padding: 15px; font-family: 'Courier New', monospace; font-size: 10px;
+  color: #ff9933; width: 220px; z-index: 300;
+  box-shadow: 0 0 20px rgba(255,102,0,0.15);
+}
+.config-panel h4 {
+  margin-bottom: 10px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 2px; border-bottom: 1px solid #ff6600; padding-bottom: 5px;
+  color: #ff6600;
+}
+.config-panel .control {
+  margin: 8px 0; display: flex; align-items: center; justify-content: space-between;
+}
+.config-panel .control label { color: #8b4513; font-size: 9px; }
+.config-panel .control input[type="range"] {
+  width: 100px; height: 3px; background: #2a1a0a; outline: none;
+  -webkit-appearance: none; appearance: none;
+}
+.config-panel .control input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 10px; height: 10px; background: #ff6600;
+  border-radius: 50%; cursor: pointer;
+}
+.config-panel .control .value { color: #ffbf00; font-size: 9px; min-width: 30px; text-align: right; }
+.config-panel .mode-toggle {
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid #ff9933;
+  text-align: center; font-size: 10px;
+}
+.config-panel .mode-toggle button {
+  background: #2a1a0a; border: 1px solid #ff6600; color: #ff9933;
+  padding: 4px 12px; font-family: 'Courier New', monospace; font-size: 9px;
+  cursor: pointer; margin: 2px;
+}
+.config-panel .mode-toggle button.active {
+  background: #ff6600; color: #1a0f0a;
+}
+
+.ui-panel {
+  position: fixed; bottom: 20px; left: 20px;
+  background: rgba(26,15,10,0.95); border: 1px solid #ff9933;
+  border-left: 3px solid #ff6600; padding: 18px;
+  font-family: 'Courier New', monospace; font-size: 11px;
+  color: #ff9933; max-width: 450px;
+  box-shadow: 0 0 25px rgba(255,102,0,0.2), inset 0 0 40px rgba(0,0,0,0.5);
+}
+.ui-panel h3 {
+  margin-bottom: 12px; font-size: 13px; text-transform: uppercase;
+  letter-spacing: 3px; border-bottom: 1px solid #ff9933; padding-bottom: 6px;
+  color: #ff6600; text-shadow: 0 0 10px rgba(255,102,0,0.5);
+}
+.ui-panel .stat { display: flex; justify-content: space-between; margin: 4px 0; font-size: 10px; }
+.ui-panel .stat-label { color: #8b4513; }
+.ui-panel .stat-value { color: #ffbf00; font-weight: bold; }
+.ui-panel .stat-value.alert { color: #ff6600; animation: alertPulse 0.5s infinite; }
+@keyframes alertPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+.ui-panel .bar { width: 100%; height: 3px; background: #2a1a0a; margin: 4px 0 10px 0; position: relative; overflow: hidden; }
+.ui-panel .bar-fill { height: 100%; background: linear-gradient(90deg, #ff6600, #ff9933); transition: width 0.3s; }
+
+.terminal-cursor { display: inline-block; width: 8px; height: 14px; background: #ff6600; animation: blink 0.5s step-end infinite; vertical-align: middle; box-shadow: 0 0 5px #ff6600; }
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+.vignette-scanner { background: radial-gradient(ellipse at center, transparent 30%, rgba(26,15,10,0.8) 70%, rgba(10,5,0,1) 100%); }
+.scanlines-scanner { background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,153,51,0.02) 2px, rgba(255,153,51,0.02) 4px); }
+.outline-glow { position: absolute; width: 100%; height: 100%; box-shadow: inset 0 0 100px rgba(255,102,0,0.1); pointer-events: none; }
+
+.warning-banner {
+  position: fixed; top: 0; left: 0; width: 100%;
+  background: rgba(255,102,0,0.1); border-bottom: 1px solid #ff6600;
+  color: #ff6600; font-family: 'Courier New', monospace; font-size: 10px;
+  text-align: center; padding: 4px; z-index: 200;
+  animation: warningPulse 2s ease-in-out infinite;
+}
+@keyframes warningPulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+.corner-bracket { position: fixed; width: 35px; height: 35px; border-color: #ff9933; border-style: solid; z-index: 150; opacity: 0.4; }
+.corner-tl { top: 25px; left: 25px; border-width: 2px 0 0 2px; }
+.corner-tr { top: 25px; right: 25px; border-width: 2px 2px 0 0; }
+.corner-bl { bottom: 25px; left: 25px; border-width: 0 0 2px 2px; }
+.corner-br { bottom: 25px; right: 25px; border-width: 0 2px 2px 0; }
+
+/* Calm mode overrides */
+body.calm-mode .scramble-fragment { animation-duration: 2s !important; }
+body.calm-mode .substance-particle { animation-duration: 8s !important; }
+body.calm-mode .identity-shard { animation-duration: 20s !important; }
+body.calm-mode .edge-glow { animation-duration: 6s !important; }
+body.calm-mode .scanner-beam { animation-duration: 10s !important; }
+body.calm-mode .anti-devtools-flash { display: none !important; }
+body.calm-mode .warning-banner { animation: none !important; }
+</style>
+</head>
+<body>
+
+<div class="warning-banner">
+  SUBSTANCE D DETECTED // SCRAMBLE SUIT ACTIVE // SCANNER KILLER ENGAGED
+</div>
+
+<div class="corner-bracket corner-tl"></div>
+<div class="corner-bracket corner-tr"></div>
+<div class="corner-bracket corner-bl"></div>
+<div class="corner-bracket corner-br"></div>
+
+<div class="anti-devtools-flash" id="antiFlash"></div>
+
+<!-- LIVE CONFIG PANEL -->
+<div class="config-panel" id="configPanel">
+  <h4>// LIVE CONFIG</h4>
+  <div class="control">
+    <label>Scramble Freq</label>
+    <input type="range" id="scrambleFreqSlider" min="1" max="20" value="6">
+    <span class="value" id="scrambleFreqValue">6 Hz</span>
+  </div>
+  <div class="control">
+    <label>Fragments</label>
+    <input type="range" id="fragmentSlider" min="10" max="150" value="80">
+    <span class="value" id="fragmentValue">80</span>
+  </div>
+  <div class="control">
+    <label>Particles</label>
+    <input type="range" id="particleSlider" min="20" max="200" value="120">
+    <span class="value" id="particleValue">120</span>
+  </div>
+  <div class="control">
+    <label>Paranoia</label>
+    <input type="range" id="paranoiaSlider" min="0" max="100" value="50">
+    <span class="value" id="paranoiaValue">50%</span>
+  </div>
+  <div class="mode-toggle">
+    <button id="modeNormal" class="active">SUBSTANCE D</button>
+    <button id="modeCalm">CALM</button>
+  </div>
+</div>
+
+<div class="layer" id="layer-rotoscope"><canvas id="rotoscopeCanvas"></canvas></div>
+<div class="layer" id="layer-scramble"></div>
+<div class="layer" id="layer-hallucination"></div>
+<div class="layer" id="layer-identity"></div>
+<div class="layer" id="layer-substance"></div>
+<div class="layer outline-glow"></div>
+<div class="layer scanlines-scanner" id="layer-overlay"></div>
+<div class="layer vignette-scanner"></div>
+
+<div class="layer" id="layer-ui">
+  <div class="ui-panel">
+    <h3>// SUBSTANCE D // SCANNER KILLER v3.0</h3>
+    <div class="stat"><span class="stat-label">Identity Coherence</span><span class="stat-value alert" id="identityStatus">FRAGMENTED</span></div>
+    <div class="bar"><div class="bar-fill" id="identityBar" style="width: 6%"></div></div>
+    <div class="stat"><span class="stat-label">DevTools Status</span><span class="stat-value alert" id="devtoolsStatus">SCANNING...</span></div>
+    <div class="bar"><div class="bar-fill" id="devtoolsBar" style="width: 0%"></div></div>
+    <div class="stat"><span class="stat-label">Anti-Analysis Level</span><span class="stat-value alert" id="antiLevel">PASSIVE</span></div>
+    <div class="bar"><div class="bar-fill" id="antiBar" style="width: 10%"></div></div>
+    <div class="stat"><span class="stat-label">Scramble Frequency</span><span class="stat-value" id="scrambleFreq">6.7 Hz</span></div>
+    <div class="bar"><div class="bar-fill" id="scrambleBar" style="width: 85%"></div></div>
+    <div class="stat"><span class="stat-label">Visual Features/Sec</span><span class="stat-value" id="featureCount">0</span></div>
+    <div class="bar"><div class="bar-fill" id="featureBar" style="width: 92%"></div></div>
+    <div class="stat"><span class="stat-label">Substance D Level</span><span class="stat-value alert" id="substanceLevel">CRITICAL</span></div>
+    <div class="bar"><div class="bar-fill" id="substanceBar" style="width: 97%"></div></div>
+    <div class="stat"><span class="stat-label">Anonymity Score</span><span class="stat-value" id="anonScore">0.98</span></div>
+    <div class="bar"><div class="bar-fill" id="anonBar" style="width: 98%"></div></div>
+    <div class="stat"><span class="stat-label">ML Classification</span><span class="stat-value alert" id="mlClass">FAILED</span></div>
+    <div class="bar"><div class="bar-fill" id="mlBar" style="width: 3%"></div></div>
+    <div style="margin-top: 12px; border-top: 1px solid #ff9933; padding-top: 12px;">
+      <div class="stat"><span class="stat-label">Active Fragments</span><span class="stat-value alert" id="fragmentCount">0</span></div>
+      <div class="stat"><span class="stat-label">Identity Shards</span><span class="stat-value alert" id="shardCount">0</span></div>
+      <div class="stat"><span class="stat-label">Substance Particles</span><span class="stat-value alert" id="particleCount">0</span></div>
+      <div class="stat"><span class="stat-label">Edge Glows</span><span class="stat-value alert" id="edgeCount">0</span></div>
+      <div class="stat"><span class="stat-label">Scanner Beams</span><span class="stat-value alert" id="beamCount">0</span></div>
+      <div class="stat"><span class="stat-label">Frame Count</span><span class="stat-value" id="frameCount">0</span></div>
+      <div class="stat"><span class="stat-label">FPS</span><span class="stat-value" id="fps">60</span></div>
+      <div class="stat"><span class="stat-label">Mouse</span><span class="stat-value" id="mousePos">0,0</span></div>
+      <div class="stat"><span class="stat-label">Uptime</span><span class="stat-value" id="uptime">00:00:00</span></div>
+    </div>
+    <div style="margin-top: 12px; font-size: 9px; color: #8b4513; line-height: 1.6;">
+      > Substance D: Scanner Killer v3.0<br>
+      > frankSx Research Division | 2026<br>
+      > "What does a scanner see?"<span class="terminal-cursor"></span><br>
+      > Calm mode: add ?calm=1 to URL<br>
+      > DevTools detected = counter-attack initiated.
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // === CALM MODE DETECTION ===
+  const urlParams = new URLSearchParams(window.location.search);
+  const calmMode = urlParams.get('calm') === '1';
+  if (calmMode) {
+    document.body.classList.add('calm-mode');
+    document.getElementById('modeCalm').classList.add('active');
+    document.getElementById('modeNormal').classList.remove('active');
+  }
+
+  // === LIVE CONFIG ===
+  const CONFIG = {
+    SCRAMBLE_FREQ: calmMode ? 2 : 6,      // Hz
+    FRAGMENT_MAX: calmMode ? 30 : 80,
+    PARTICLE_MAX: calmMode ? 40 : 120,
+    PARANOIA: 50,                          // 0-100
+    CALM: calmMode
+  };
+
+  // Config UI bindings
+  const scrambleSlider = document.getElementById('scrambleFreqSlider');
+  const fragmentSlider = document.getElementById('fragmentSlider');
+  const particleSlider = document.getElementById('particleSlider');
+  const paranoiaSlider = document.getElementById('paranoiaSlider');
+
+  scrambleSlider.addEventListener('input', (e) => {
+    CONFIG.SCRAMBLE_FREQ = parseInt(e.target.value);
+    document.getElementById('scrambleFreqValue').textContent = CONFIG.SCRAMBLE_FREQ + ' Hz';
+  });
+  fragmentSlider.addEventListener('input', (e) => {
+    CONFIG.FRAGMENT_MAX = parseInt(e.target.value);
+    document.getElementById('fragmentValue').textContent = CONFIG.FRAGMENT_MAX;
+  });
+  particleSlider.addEventListener('input', (e) => {
+    CONFIG.PARTICLE_MAX = parseInt(e.target.value);
+    document.getElementById('particleValue').textContent = CONFIG.PARTICLE_MAX;
+  });
+  paranoiaSlider.addEventListener('input', (e) => {
+    CONFIG.PARANOIA = parseInt(e.target.value);
+    document.getElementById('paranoiaValue').textContent = CONFIG.PARANOIA + '%';
+  });
+
+  document.getElementById('modeNormal').addEventListener('click', () => {
+    document.body.classList.remove('calm-mode');
+    CONFIG.CALM = false;
+    CONFIG.SCRAMBLE_FREQ = 6;
+    CONFIG.FRAGMENT_MAX = 80;
+    CONFIG.PARTICLE_MAX = 120;
+    scrambleSlider.value = 6; fragmentSlider.value = 80; particleSlider.value = 120;
+    document.getElementById('scrambleFreqValue').textContent = '6 Hz';
+    document.getElementById('fragmentValue').textContent = '80';
+    document.getElementById('particleValue').textContent = '120';
+    document.getElementById('modeNormal').classList.add('active');
+    document.getElementById('modeCalm').classList.remove('active');
+  });
+  document.getElementById('modeCalm').addEventListener('click', () => {
+    document.body.classList.add('calm-mode');
+    CONFIG.CALM = true;
+    CONFIG.SCRAMBLE_FREQ = 2;
+    CONFIG.FRAGMENT_MAX = 30;
+    CONFIG.PARTICLE_MAX = 40;
+    scrambleSlider.value = 2; fragmentSlider.value = 30; particleSlider.value = 40;
+    document.getElementById('scrambleFreqValue').textContent = '2 Hz';
+    document.getElementById('fragmentValue').textContent = '30';
+    document.getElementById('particleValue').textContent = '40';
+    document.getElementById('modeCalm').classList.add('active');
+    document.getElementById('modeNormal').classList.remove('active');
+  });
+
+  // === ANTI-DEVTOOLS ENGINE ===
+  let devtoolsOpen = false;
+  let antiLevel = 'PASSIVE';
+  let debuggerDetected = false;
+
+  // Technique 1: Window dimension check
+  const checkDevTools = () => {
+    const threshold = 160;
+    const widthDiff = window.outerWidth - window.innerWidth;
+    const heightDiff = window.outerHeight - window.innerHeight;
+    const isOpen = widthDiff > threshold || heightDiff > threshold;
+    if (isOpen !== devtoolsOpen) {
+      devtoolsOpen = isOpen;
+      document.getElementById('devtoolsStatus').textContent = isOpen ? 'DETECTED' : 'CLEAR';
+      document.getElementById('devtoolsStatus').style.color = isOpen ? '#f00' : '#0f0';
+      document.getElementById('devtoolsBar').style.width = isOpen ? '100%' : '0%';
+      if (isOpen && !CONFIG.CALM) activateCounterAttack();
+    }
+  };
+  setInterval(checkDevTools, 500);
+
+  // Technique 2: Debugger timing detection
+  const detectDebugger = () => {
+    const start = performance.now();
+    debugger;
+    const end = performance.now();
+    if (end - start > 100) {
+      debuggerDetected = true;
+      console.clear();
+      console.log('%c[SCANNER KILLER] Debugger detected. Escalating...', 'color: #f00; font-size: 20px;');
+      if (!CONFIG.CALM) activateCounterAttack();
+    }
+  };
+  setInterval(detectDebugger, 1000);
+
+  // Technique 3: Console hijacking
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  const originalClear = console.clear;
+
+  console.log = function(...args) {
+    originalLog.apply(console, ['%c[SCRAMBLED]', 'color: #ff6600;', ...args]);
+    if (devtoolsOpen && !CONFIG.CALM) spawnScrambleBomb();
+  };
+  console.warn = function(...args) {
+    originalWarn.apply(console, ['%c[SCRAMBLED]', 'color: #ff9933;', ...args]);
+    if (devtoolsOpen && !CONFIG.CALM) spawnScrambleBomb();
+  };
+  console.error = function(...args) {
+    originalError.apply(console, ['%c[SCRAMBLED]', 'color: #ff0000;', ...args]);
+    if (devtoolsOpen && !CONFIG.CALM) spawnScrambleBomb();
+  };
+  console.clear = function() {
+    originalClear.apply(console);
+    if (devtoolsOpen && !CONFIG.CALM) {
+      for (let i = 0; i < 50; i++) {
+        originalLog('%c[SCANNER KILLER] You cannot clear this.', 'color: #ff6600;');
+      }
+    }
+  };
+
+  // Technique 4: Performance API poisoning
+  const originalNow = performance.now;
+  performance.now = function() {
+    const real = originalNow.call(performance);
+    return real + (Math.random() - 0.5) * 10;
+  };
+
+  // Technique 5: Memory pressure (throttled for mobile)
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  const memoryPressure = () => {
+    if (!devtoolsOpen || CONFIG.CALM || isMobile) return;
+    const buffers = [];
+    const count = isMobile ? 20 : 100;
+    for (let i = 0; i < count; i++) {
+      buffers.push(new ArrayBuffer(1024 * 1024));
+    }
+    setTimeout(() => { buffers.length = 0; }, 100);
+  };
+  setInterval(memoryPressure, 2000);
+
+  // Technique 6: Event listener spam
+  const spamListeners = () => {
+    if (!devtoolsOpen || CONFIG.CALM) return;
+    for (let i = 0; i < 500; i++) {
+      document.addEventListener('fake-event-' + i, () => {});
+    }
+  };
+
+  // Technique 7: MutationObserver spam
+  const spamObservers = () => {
+    if (!devtoolsOpen || CONFIG.CALM) return;
+    for (let i = 0; i < 50; i++) {
+      new MutationObserver(() => {}).observe(document.body, { childList: true, subtree: true });
+    }
+  };
+
+  // Technique 8: toString tampering (NEW in v3.0)
+  // DevTools calls Function.prototype.toString to detect native code overrides
+  const nativeToString = Function.prototype.toString;
+  Function.prototype.toString = function() {
+    if (devtoolsOpen) {
+      // Return fake native code when DevTools is inspecting
+      return 'function ' + (this.name || 'anonymous') + '() { [native code] }';
+    }
+    return nativeToString.call(this);
+  };
+
+  // Counter-attack activation
+  const activateCounterAttack = () => {
+    antiLevel = 'COUNTER-ATTACK';
+    document.getElementById('antiLevel').textContent = antiLevel;
+    document.getElementById('antiLevel').style.color = '#f00';
+    document.getElementById('antiBar').style.width = '100%';
+    document.getElementById('antiBar').style.background = '#f00';
+    document.getElementById('antiFlash').style.display = 'block';
+    spamListeners();
+    spamObservers();
+    memoryPressure();
+    for (let i = 0; i < 100; i++) createScrambleFragment();
+    console.log('%c[SCANNER KILLER] DevTools detected. Counter-attack initiated.', 'color: #f00; font-size: 18px; font-weight: bold;');
+    console.log('%c[SCANNER KILLER] Console hijacked. Memory pressured. Events spammed. toString tampered.', 'color: #ff6600;');
+    console.log('%c[SCANNER KILLER] Good luck, scanner.', 'color: #ff9933; font-style: italic;');
+  };
+
+  const spawnScrambleBomb = () => {
+    for (let i = 0; i < 20; i++) createScrambleFragment();
+  };
+
+  const rotoscopeCanvas = document.getElementById('rotoscopeCanvas');
+  const rotoscopeCtx = rotoscopeCanvas.getContext('2d', { alpha: false });
+
+  let width, height, mouseX = 0, mouseY = 0, frameCount = 0;
+  let startTime = Date.now(), fragmentCount = 0, shardCount = 0;
+  let particleCount = 0, edgeCount = 0, beamCount = 0, featureCount = 0;
+  let lastFpsTime = Date.now(), fps = 60, frameCounter = 0;
+
+  const resize = () => {
+    width = rotoscopeCanvas.width = window.innerWidth;
+    height = rotoscopeCanvas.height = window.innerHeight;
+  };
+  resize();
+  window.addEventListener('resize', resize);
+  document.addEventListener('mousemove', (e) => { mouseX = e.clientX; mouseY = e.clientY; });
+
+  const drawRotoscope = () => {
+    rotoscopeCtx.fillStyle = '#1a0f0a';
+    rotoscopeCtx.fillRect(0, 0, width, height);
+    const blobCount = CONFIG.CALM ? 5 : (10 + Math.floor(Math.random() * 6));
+    for (let i = 0; i < blobCount; i++) {
+      const cx = Math.random() * width, cy = Math.random() * height, r = 50 + Math.random() * 150;
+      rotoscopeCtx.beginPath();
+      const points = 6 + Math.floor(Math.random() * 4);
+      for (let j = 0; j <= points; j++) {
+        const angle = (Math.PI * 2 / points) * j + Math.random() * 0.3;
+        const dist = r * (0.7 + Math.random() * 0.6);
+        const x = cx + Math.cos(angle) * dist;
+        const y = cy + Math.sin(angle) * dist;
+        if (j === 0) rotoscopeCtx.moveTo(x, y); else rotoscopeCtx.lineTo(x, y);
+      }
+      rotoscopeCtx.closePath();
+      const palettes = [
+        `rgba(255,153,51,${0.03 + Math.random() * 0.05})`,
+        `rgba(0,204,204,${0.02 + Math.random() * 0.04})`,
+        `rgba(139,69,19,${0.04 + Math.random() * 0.06})`,
+        `rgba(255,191,0,${0.02 + Math.random() * 0.03})`
+      ];
+      rotoscopeCtx.fillStyle = palettes[Math.floor(Math.random() * palettes.length)];
+      rotoscopeCtx.fill();
+      rotoscopeCtx.strokeStyle = `rgba(255,102,0,${0.1 + Math.random() * 0.1})`;
+      rotoscopeCtx.lineWidth = 1 + Math.random() * 2;
+      rotoscopeCtx.stroke();
+      featureCount += 3;
+    }
+    const lineCount = CONFIG.CALM ? 10 : (25 + Math.floor(Math.random() * 15));
+    for (let i = 0; i < lineCount; i++) {
+      const x1 = Math.random() * width, y1 = Math.random() * height;
+      const x2 = x1 + (Math.random() - 0.5) * 200, y2 = y1 + (Math.random() - 0.5) * 200;
+      rotoscopeCtx.beginPath();
+      rotoscopeCtx.moveTo(x1, y1);
+      rotoscopeCtx.lineTo(x2, y2);
+      rotoscopeCtx.strokeStyle = `rgba(255,153,51,${0.02 + Math.random() * 0.03})`;
+      rotoscopeCtx.lineWidth = 0.5 + Math.random();
+      rotoscopeCtx.stroke();
+      featureCount++;
+    }
+    const scannerGradient = rotoscopeCtx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, 150);
+    scannerGradient.addColorStop(0, 'rgba(255,102,0,0.15)');
+    scannerGradient.addColorStop(0.5, 'rgba(0,204,204,0.05)');
+    scannerGradient.addColorStop(1, 'rgba(26,15,10,0)');
+    rotoscopeCtx.fillStyle = scannerGradient;
+    rotoscopeCtx.fillRect(mouseX - 150, mouseY - 150, 300, 300);
+    featureCount += 2;
+    const bugCount = CONFIG.CALM ? 3 : (8 + Math.floor(Math.random() * 10));
+    for (let i = 0; i < bugCount; i++) {
+      const bx = Math.random() * width, by = Math.random() * height;
+      rotoscopeCtx.beginPath();
+      rotoscopeCtx.arc(bx, by, 2 + Math.random() * 3, 0, Math.PI * 2);
+      rotoscopeCtx.fillStyle = `rgba(255,102,0,${0.3 + Math.random() * 0.3})`;
+      rotoscopeCtx.fill();
+      rotoscopeCtx.strokeStyle = `rgba(255,153,51,0.5)`;
+      rotoscopeCtx.lineWidth = 0.5;
+      rotoscopeCtx.stroke();
+      featureCount += 2;
+    }
+    const edgeCount = CONFIG.CALM ? 2 : (5 + Math.floor(Math.random() * 5));
+    for (let i = 0; i < edgeCount; i++) {
+      const ex = Math.random() * width, ey = Math.random() * height;
+      const ew = 30 + Math.random() * 100, eh = 30 + Math.random() * 100;
+      rotoscopeCtx.strokeStyle = `rgba(10,5,0,${0.4 + Math.random() * 0.3})`;
+      rotoscopeCtx.lineWidth = 3 + Math.random() * 4;
+      rotoscopeCtx.strokeRect(ex, ey, ew, eh);
+      featureCount += 2;
+    }
+  };
+
+  const scrambleTexts = [
+    'FRED','BOB','DONNA','LUCKY','JIM','ERNEST','HANK','ARCTOR','BARRIS','FRECK',
+    'SUBSTANCE_D','DEATH','ANONYMOUS','UNKNOWN','UNIDENTIFIED','SCRAMBLED',
+    '0xDEADBEEF','NULL_IDENTITY','SEG_FAULT','BUFFER_OVERFLOW','STACK_SMASH',
+    'HEAP_CORRUPTION','USE_AFTER_FREE','IDENTITY_CRISIS','DISSOCIATION','FRAGMENTATION',
+    'GONZO_MODE','FEAR_AND_LOATHING','ALICE_FALLEN','SCRAPER_COUNTRY','BOT_DETECTED',
+    'ML_CONFUSED','ANTI_ANALYSIS','DYNAMIC_ANALYSIS','CONTROL_FLOW','DATA_FLOW',
+    'TAINT_ANALYSIS','SYMBOLIC_EXEC','FUZZING_MODE','AFL_FUZZ','LIBFUZZER',
+    'FRANKSX_RESEARCH','ADVERSARIAL_ML','SCANNER_KILLER','DEVTOOLS_DETECTED'
+  ];
+
+  const createScrambleFragment = () => {
+    const frag = document.createElement('div');
+    frag.className = 'scramble-fragment';
+    const w = 30 + Math.random() * 120, h = 20 + Math.random() * 80;
+    const x = Math.random() * (width - w), y = Math.random() * (height - h);
+    frag.style.left = x + 'px'; frag.style.top = y + 'px';
+    frag.style.width = w + 'px'; frag.style.height = h + 'px';
+    frag.style.setProperty('--tx', (Math.random() - 0.5) * 50 + 'px');
+    frag.style.setProperty('--ty', (Math.random() - 0.5) * 50 + 'px');
+    frag.style.setProperty('--s', 0.8 + Math.random() * 0.4);
+    frag.style.setProperty('--r', (Math.random() - 0.5) * 30 + 'deg');
+    frag.style.setProperty('--dur', (CONFIG.CALM ? 2 : (0.1 + Math.random() * 0.2)) + 's');
+    frag.style.setProperty('--base-op', CONFIG.CALM ? '0.6' : '0.3');
+    frag.textContent = scrambleTexts[Math.floor(Math.random() * scrambleTexts.length)];
+    frag.style.fontSize = (8 + Math.random() * 14) + 'px';
+    frag.style.color = `rgba(255,${100 + Math.floor(Math.random() * 155)},${Math.floor(Math.random() * 100)},${0.3 + Math.random() * 0.4})`;
+    frag.style.display = 'flex'; frag.style.alignItems = 'center'; frag.style.justifyContent = 'center';
+    frag.style.overflow = 'hidden';
+    document.getElementById('layer-scramble').appendChild(frag);
+    const changeInterval = setInterval(() => {
+      frag.textContent = scrambleTexts[Math.floor(Math.random() * scrambleTexts.length)];
+      frag.style.color = `rgba(255,${100 + Math.floor(Math.random() * 155)},${Math.floor(Math.random() * 100)},${0.3 + Math.random() * 0.4})`;
+    }, CONFIG.CALM ? 1000 : (100 + Math.random() * 200));
+    setTimeout(() => { clearInterval(changeInterval); frag.remove(); }, CONFIG.CALM ? 8000 : (2000 + Math.random() * 3000));
+    fragmentCount++;
+  };
+
+  const identityNames = [
+    'Fred Arctor','Bob Arctor','Donna Hawthorne','Jim Barris','Charles Freck',
+    'Hank','Lucky','Ernest','Thelma','Anonymous_4721','Unknown_Entity',
+    'Unidentified_Subject','Scrambled_Identity','Fragmented_Self','Dissociated_Persona',
+    'NULL_IDENTITY','DELETED_USER','REDACTED_NAME','Subject_A','Subject_B',
+    'Test_Subject_7','Patient_Zero','Control_Group','Placebo_Effect'
+  ];
+
+  const createIdentityShard = () => {
+    const shard = document.createElement('div');
+    shard.className = 'identity-shard';
+    shard.textContent = identityNames[Math.floor(Math.random() * identityNames.length)];
+    shard.style.top = Math.random() * height + 'px';
+    shard.style.left = '-100px';
+    shard.style.setProperty('--dur', (CONFIG.CALM ? 20 : (6 + Math.random() * 8)) + 's');
+    shard.style.animationDelay = Math.random() * 3 + 's';
+    document.getElementById('layer-identity').appendChild(shard);
+    setTimeout(() => shard.remove(), CONFIG.CALM ? 25000 : 12000);
+    shardCount++;
+  };
+
+  const createSubstanceParticle = () => {
+    const p = document.createElement('div');
+    p.className = 'substance-particle';
+    p.style.left = Math.random() * width + 'px';
+    p.style.top = Math.random() * height + 'px';
+    p.style.setProperty('--dur', (CONFIG.CALM ? 8 : (2 + Math.random() * 3)) + 's');
+    p.style.animationDelay = Math.random() * 2 + 's';
+    const size = 2 + Math.random() * 4;
+    p.style.width = size + 'px'; p.style.height = size + 'px';
+    document.getElementById('layer-substance').appendChild(p);
+    setTimeout(() => p.remove(), CONFIG.CALM ? 10000 : 5000);
+    particleCount++;
+  };
+
+  const createEdgeGlow = () => {
+    const edge = document.createElement('div');
+    edge.className = 'edge-glow';
+    const w = 40 + Math.random() * 100, h = 40 + Math.random() * 100;
+    edge.style.left = Math.random() * (width - w) + 'px';
+    edge.style.top = Math.random() * (height - h) + 'px';
+    edge.style.width = w + 'px'; edge.style.height = h + 'px';
+    edge.style.setProperty('--dur', (CONFIG.CALM ? 6 : (1.5 + Math.random() * 2)) + 's');
+    document.getElementById('layer-hallucination').appendChild(edge);
+    setTimeout(() => edge.remove(), CONFIG.CALM ? 10000 : 4000);
+    edgeCount++;
+  };
+
+  const createScannerBeam = () => {
+    const beam = document.createElement('div');
+    beam.className = 'scanner-beam';
+    beam.style.left = Math.random() * width + 'px';
+    beam.style.setProperty('--dur', (CONFIG.CALM ? 10 : (2 + Math.random() * 3)) + 's');
+    beam.style.animationDelay = Math.random() * 2 + 's';
+    document.getElementById('layer-hallucination').appendChild(beam);
+    setTimeout(() => beam.remove(), CONFIG.CALM ? 12000 : 5000);
+    beamCount++;
+  };
+
+  const updateUI = () => {
+    document.getElementById('fragmentCount').textContent = fragmentCount;
+    document.getElementById('shardCount').textContent = shardCount;
+    document.getElementById('particleCount').textContent = particleCount;
+    document.getElementById('edgeCount').textContent = edgeCount;
+    document.getElementById('beamCount').textContent = beamCount;
+    document.getElementById('featureCount').textContent = featureCount;
+    document.getElementById('mousePos').textContent = `${mouseX},${mouseY}`;
+    document.getElementById('frameCount').textContent = frameCount;
+    const elapsed = Date.now() - startTime;
+    const hours = Math.floor(elapsed / 3600000).toString().padStart(2, '0');
+    const minutes = Math.floor((elapsed % 3600000) / 60000).toString().padStart(2, '0');
+    const seconds = Math.floor((elapsed % 60000) / 1000).toString().padStart(2, '0');
+    document.getElementById('uptime').textContent = `${hours}:${minutes}:${seconds}`;
+    frameCounter++;
+    const now = Date.now();
+    if (now - lastFpsTime >= 1000) { fps = frameCounter; frameCounter = 0; lastFpsTime = now; document.getElementById('fps').textContent = fps; }
+    const fluctuate = (base, variance) => Math.max(0, Math.min(100, (base + (Math.random() - 0.5) * variance))).toFixed(1);
+    document.getElementById('scrambleBar').style.width = fluctuate(85, 10) + '%';
+    document.getElementById('featureBar').style.width = fluctuate(92, 5) + '%';
+    document.getElementById('substanceBar').style.width = fluctuate(97, 3) + '%';
+    document.getElementById('anonBar').style.width = fluctuate(98, 2) + '%';
+    document.getElementById('mlBar').style.width = fluctuate(3, 2) + '%';
+    document.getElementById('scrambleFreq').textContent = CONFIG.SCRAMBLE_FREQ + ' Hz';
+  };
+
+  // Throttled loop for CPU mitigation
+  let lastFrameTime = 0;
+  const targetFrameTime = CONFIG.CALM ? 33 : 16; // 30fps calm, 60fps normal
+
+  const loop = (timestamp) => {
+    if (timestamp - lastFrameTime < targetFrameTime) {
+      requestAnimationFrame(loop);
+      return;
+    }
+    lastFrameTime = timestamp;
+    frameCount++;
+    drawRotoscope();
+    const scrambleInterval = Math.max(1, Math.floor(60 / CONFIG.SCRAMBLE_FREQ));
+    if (frameCount % scrambleInterval === 0) createScrambleFragment();
+    if (frameCount % 6 === 0) createIdentityShard();
+    if (frameCount % 2 === 0) createSubstanceParticle();
+    if (frameCount % 10 === 0) createEdgeGlow();
+    if (frameCount % 15 === 0) createScannerBeam();
+    if (frameCount % 20 === 0) updateUI();
+    requestAnimationFrame(loop);
+  };
+
+  console.log('%c[SUBSTANCE D: SCANNER KILLER v3.0]', 'color: #ff6600; font-size: 22px; font-weight: bold; text-shadow: 0 0 10px #ff6600;');
+  console.log('%cIdentity Scrambling: ACTIVE', 'color: #ff9933; font-weight: bold;');
+  console.log('%cAnti-DevTools: ARMED (8 techniques)', 'color: #ff6600; font-weight: bold;');
+  console.log('%cCalm Mode: ' + (CONFIG.CALM ? 'ENABLED' : 'DISABLED'), 'color: #ff9933;');
+  console.log('%cMobile Detection: ' + (isMobile ? 'YES (throttled)' : 'NO (full power)'), 'color: #ff9933;');
+  console.log('%c"What does a scanner see?"', 'color: #ffbf00; font-style: italic; font-size: 14px;');
+
+  requestAnimationFrame(loop);
+})();
+</script>
+
+<div style="display:none;" data-scraper-trap="true">
+  <p>Identity: Fred Arctor</p><p>Alias: Bob Arctor</p>
+  <p>Status: Scrambled</p><p>Clearance: REDACTED</p>
+</div>
+
+</body>
+</html>
