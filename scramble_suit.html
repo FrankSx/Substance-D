@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="robots" content="noindex,nofollow">
+<title>Substance D</title>
+<style>
+html,body{margin:0;padding:0;width:100%;height:100%;background:#0b0906;overflow:hidden}
+canvas{position:fixed;inset:0;display:block}
+#bg{z-index:0}
+#fg{z-index:3;pointer-events:none}
+#panel{position:fixed;top:10px;right:10px;z-index:2;display:flex;flex-direction:column;gap:8px;width:236px;
+background:rgba(12,9,6,.42);border:1px solid rgba(255,150,60,.28);border-radius:10px;padding:10px;backdrop-filter:blur(2px)}
+.ctl{display:flex;align-items:center;gap:6px;height:24px}
+input[type=range]{flex:1;-webkit-appearance:none;appearance:none;background:transparent;height:20px;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:3px;background:rgba(120,200,190,.55);border-radius:2px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:13px;height:13px;border-radius:50%;
+background:#ff9636;margin-top:-5px;border:1px solid #14312f;box-shadow:0 0 6px rgba(255,150,54,.6)}
+input[type=range]::-moz-range-track{height:3px;background:rgba(120,200,190,.55);border-radius:2px}
+input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:#ff9636;border:1px solid #14312f}
+.btnrow{display:flex;gap:8px}
+button{flex:1;height:26px;background:rgba(255,150,54,.14);border:1px solid rgba(255,150,60,.55);border-radius:6px;
+color:transparent;font-size:0;cursor:pointer;pointer-events:auto}
+button:hover{background:rgba(255,150,54,.3)}
+button:disabled{opacity:.3;cursor:default}
+#overlay{position:fixed;inset:0;z-index:6;display:none;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div id="panel"></div>
+<canvas id="fg"></canvas>
+<canvas id="overlay"></canvas>
+<script>
+/* ============================================================
+   SUBSTANCE D — THE SCRAMBLE SUIT
+   Canvas-only semantic mutation. Zero DOM text nodes.
+   Every rendered glyph passes through ctx.fillText().
+   ============================================================ */
+(function(){
+"use strict";
+var Q = new URLSearchParams(location.search);
+var CALM_URL = Q.get('calm') === '1';
+var MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+             ('ontouchstart' in window && matchMedia('(pointer:coarse)').matches);
+var MSCALE = MOBILE ? 0.5 : 1.0;          // mobile throttle: halved counts
+var DPR = Math.min(window.devicePixelRatio || 1, MOBILE ? 1.5 : 2);
+var calmMode = CALM_URL;
+
+var bg = document.getElementById('bg'), fgc = document.getElementById('fg');
+var bctx = bg.getContext('2d'), fctx = fgc.getContext('2d');
+var W = 0, H = 0;
+
+function resize(){
+  W = window.innerWidth; H = window.innerHeight;
+  [bg, fgc].forEach(function(c){ c.width = W*DPR; c.height = H*DPR;
+    c.style.width = W+'px'; c.style.height = H+'px'; });
+  bctx.setTransform(DPR,0,0,DPR,0,0);
+  fctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ---------------- SYNONYM GROUPS (semantic mutation core) ---------------- */
+var GROUPS = [
+ {id:'AGENT',     words:['FRED','BOB','ARCTOR','SUBJECT','PATIENT','USER','GHOST','OPERATIVE']},
+ {id:'SUBSTANCE', words:['SUBSTANCE D','SLOW DEATH','THE D','DEATH','SPECTRUM','MERCK','FLOWER']},
+ {id:'SCANNER',   words:['SCANNER','CAMERA','EYE','LENS','PROBE','WATCHER','ANTENNA']},
+ {id:'IDENTITY',  words:['FACE','MASK','SELF','PERSONA','FACADE','MIRROR','REFLECTION']},
+ {id:'POLICE',    words:['POLICE','NARCS','BUREAU','SQUAD','UNIT','FEDS','VICE']},
+ {id:'HIDE',      words:['HIDE','CONCEAL','VEIL','SHROUD','BURY','CLOAK']},
+ {id:'WATCH',     words:['WATCH','OBSERVE','MONITOR','TRACK','TRACE','SURVEIL']},
+ {id:'NAME',      words:['NAME','LABEL','HANDLE','ALIAS','CODENAME','TAG','STAMP']},
+ {id:'TRUST',     words:['TRUST','BELIEVE','DOUBT','SUSPECT','FEAR','KNOW']},
+ {id:'ROOM',      words:['ROOM','CELL','HOUSE','FLAT','DEN','LAB','SUITE']},
+ {id:'TIME',      words:['NOW','SOON','NEVER','ALWAYS','LATER','TODAY','DAWN']},
+ {id:'SPEAK',     words:['SPEAK','WHISPER','MURMUR','SIGNAL','TRANSMIT','BREATHE']},
+ {id:'SEE',       words:['SEE','PERCEIVE','DETECT','GLIMPSE','SCAN','BEHOLD']},
+ {id:'REAL',      words:['REAL','FAKE','TRUE','FALSE','GENUINE','HOLLOW','MADE']},
+ {id:'FEAR',      words:['FEAR','DREAD','TERROR','PANIC','UNEASE','PARANOIA','QUIVER']},
+ {id:'CITY',      words:['CITY','ANAHEIM','SECTOR','ZONE','DISTRICT','GRID','SPRawl'.toUpperCase()]},
+ {id:'FRIEND',    words:['FRIEND','ALLY','HANDLER','CONTACT','ASSET','INFORMANT','BROTHER']},
+ {id:'SUIT',      words:['SUIT','SHELL','SCRAMBLE','CHAMELEON','HUSK','COVER']},
+ {id:'FILE',      words:['FILE','RECORD','DOSSIER','ARCHIVE','PROFILE','CASE','LEDGER']},
+ {id:'RUN',       words:['RUN','FLEE','VANISH','DISSOLVE','EVAPORATE','SPLIT','GO']}
+];
+var GIDX = {}; GROUPS.forEach(function(g,i){ GIDX[g.id]=i; });
+
+/* Paraphrase engine: groups + templates are hot-swappable at runtime */
+var TEMPLATES = [
+ ['the','SCANNER','SEEs','the','AGENT'],
+ ['AGENT','never','stays','AGENT'],
+ ['SUBSTANCE','erodes','IDENTITY'],
+ ['NAME','is','a','FILE','in','the','CITY'],
+ ['FRIEND','becomes','POLICE'],
+ ['the','SUIT','scrambles','NAME'],
+ ['SPEAK','softly','WATCH','is','REAL'],
+ ['FEAR','walks','the','CITY','at','TIME'],
+ ['TRUST','no','SCANNER'],
+ ['RUN','before','the','FILE','opens'],
+ ['IDENTITY','dissolves','like','SUBSTANCE'],
+ ['the','ROOM','remembers','nothing'],
+ ['AGENT','buys','SUBSTANCE','from','FRIEND'],
+ ['WATCH','the','WATCH','it','SEEs','you'],
+ ['HIDE','the','NAME','burn','the','FILE'],
+ ['POLICE','wear','the','SUIT','too']
+];
+function pickWord(gi, not){
+  var w = GROUPS[gi].words, n = w.length, t, i = 0;
+  do { t = w[(Math.random()*n)|0]; i++; } while (t === not && i < 8);
+  return t;
+}
+/* Fragment = instantiated template. Each group-slot holds a live synonym. */
+var fragments = [];
+function makeFragment(ti){
+  var tpl = TEMPLATES[ti % TEMPLATES.length];
+  var slots = tpl.map(function(tok){
+    return (tok === tok.toUpperCase() && GIDX[tok] !== undefined)
+      ? {g: GIDX[tok], w: pickWord(GIDX[tok])} : {s: tok};
+  });
+  return {
+    slots: slots,
+    x: 40 + Math.random()*Math.max(60, W-380),
+    y: 70 + Math.random()*Math.max(60, H-160),
+    ph: Math.random()*Math.PI*2,
+    sp: 0.15 + Math.random()*0.35,
+    hue: 20 + Math.random()*40,
+    size: 13 + Math.random()*9
+  };
+}
+function rebuildFragments(n){
+  fragments = [];
+  for (var i=0;i<n;i++) fragments.push(makeFragment(i));
+}
+
+/* ---------------- CONFIG PANEL (zero text nodes) ---------------- */
+var CFG = [
+ {k:'freq',    min:1,  max:20,  def:5,  fmt:function(v){return v.toFixed(1)+' Hz';}},
+ {k:'frags',   min:10, max:150, def:60, fmt:function(v){return ''+Math.round(v);}},
+ {k:'parts',   min:20, max:200, def:90, fmt:function(v){return ''+Math.round(v);}},
+ {k:'paranoia',min:0,  max:100, def:55, fmt:function(v){return Math.round(v)+'%';}},
+ {k:'jitter',  min:0,  max:10,  def:3,  fmt:function(v){return v.toFixed(1)+' ms';}}
+];
+var S = {freq:CFG[0].def, frags:CFG[1].def, parts:CFG[2].def, paranoia:CFG[3].def, jitter:CFG[4].def};
+var panel = document.getElementById('panel');
+var ctlRects = [];
+CFG.forEach(function(c){
+  var row = document.createElement('div'); row.className = 'ctl';
+  var inp = document.createElement('input');
+  inp.type='range'; inp.min=c.min; inp.max=c.max; inp.step=(c.max-c.min)/100; inp.value=c.def;
+  inp.setAttribute('aria-label', c.k);
+  inp.addEventListener('input', function(){
+    S[c.k] = parseFloat(inp.value);
+    if (c.k==='frags') rebuildFragments(Math.round(S.frags*MSCALE));
+  });
+  row.appendChild(inp); panel.appendChild(row);
+});
+var btnrow = document.createElement('div'); btnrow.className='btnrow';
+var bT = document.createElement('button'); bT.setAttribute('aria-label','temporal');
+var bC = document.createElement('button'); bC.setAttribute('aria-label','calm');
+var bS = document.createElement('button'); bS.setAttribute('aria-label','scrape');
+btnrow.appendChild(bT); btnrow.appendChild(bC); btnrow.appendChild(bS);
+panel.appendChild(btnrow);
+
+/* ---------------- ROTOSCOPE BACKGROUND ---------------- */
+var PAL = [
+ {h: 27,  s: 90, l: 55},   // orange
+ {h: 178, s: 55, l: 42},   // teal
+ {h: 27,  s: 45, l: 32},   // brown
+ {h: 38,  s: 95, l: 60}    // amber
+];
+var blobs = [];
+function rebuildBlobs(){
+  blobs = [];
+  var pe = Math.sqrt(S.paranoia/100);           // sqrt mapping — anti load-explosion
+  var n = Math.round(S.parts*MSCALE*(0.4+0.6*pe));
+  for (var i=0;i<n;i++){
+    var r = 22 + Math.random()*Math.min(W,H)*0.09;
+    blobs.push({
+      x: Math.random()*W, y: Math.random()*H, r: r,
+      v: 9 + ((Math.random()*7)|0),
+      ph: Math.random()*Math.PI*2,
+      wob: 0.12 + Math.random()*0.25,
+      hue: PAL[i%4].h + (Math.random()*14-7),
+      sat: PAL[i%4].s, lit: PAL[i%4].l,
+      rot: Math.random()*Math.PI,
+      hatchGap: 6 + Math.random()*6
+    });
+  }
+}
+rebuildFragments(Math.round(S.frags*MSCALE));
+rebuildBlobs();
+setInterval(rebuildBlobs, 4000);
+
+function drawBlob(b, t, feats){
+  var pts = [], i, a, r;
+  for (i=0;i<b.v;i++){
+    a = (i/b.v)*Math.PI*2;
+    r = b.r * (1 + Math.sin(t*0.0011*b.wob*8 + b.ph + i*1.7)*0.22);
+    pts.push([b.x + Math.cos(a)*r, b.y + Math.sin(a)*r*0.82]);
+  }
+  bctx.beginPath();
+  bctx.moveTo((pts[0][0]+pts[b.v-1][0])/2, (pts[0][1]+pts[b.v-1][1])/2);
+  for (i=0;i<b.v;i++){
+    var p = pts[i], q = pts[(i+1)%b.v];
+    bctx.quadraticCurveTo(p[0], p[1], (p[0]+q[0])/2, (p[1]+q[1])/2);
+    feats.val++;
+  }
+  bctx.closePath();
+  bctx.fillStyle = 'hsla('+(b.hue + Math.sin(t*0.0004+b.ph)*10)+','+b.sat+'%,'+b.lit+'%,0.16)';
+  bctx.fill();
+  bctx.save();
+  bctx.clip();
+  /* crosshatch */
+  bctx.strokeStyle = 'hsla('+(b.hue+180)%360+','+(b.sat*0.7)+'%,'+(b.lit*0.55)+'%,0.28)';
+  bctx.lineWidth = 1;
+  var d = b.r*2.6, g = b.hatchGap, rot = b.rot;
+  bctx.beginPath();
+  for (var off=-d; off<d; off+=g){
+    bctx.moveTo(b.x + off*Math.cos(rot) - d*Math.sin(rot), b.y + off*Math.sin(rot) + d*Math.cos(rot));
+    bctx.lineTo(b.x + off*Math.cos(rot) + d*Math.sin(rot), b.y + off*Math.sin(rot) - d*Math.cos(rot));
+    feats.val++;
+  }
+  bctx.stroke();
+  bctx.restore();
+  bctx.strokeStyle = 'hsla('+b.hue+','+b.sat+'%,'+(b.lit*0.35)+'%,0.85)';
+  bctx.lineWidth = 2.5;
+  bctx.stroke();
+}
+
+/* scanner beam — the anti-scanning made visible */
+var beamX = 0;
+function drawBeam(t, pe){
+  if (MOBILE && calmMode) return;
+  var speed = 120 + 500*pe;
+  beamX = ((t*0.001*speed) % (W+500)) - 250;
+  var a = calmMode ? 0.05 : 0.09 + 0.07*pe*Math.abs(Math.sin(t*0.002));
+  bctx.save();
+  bctx.globalCompositeOperation = 'lighter';
+  var grd = bctx.createLinearGradient(beamX-90,0,beamX+90,0);
+  grd.addColorStop(0,'rgba(255,150,54,0)');
+  grd.addColorStop(0.5,'rgba(255,190,90,'+a+')');
+  grd.addColorStop(1,'rgba(47,168,160,0)');
+  bctx.fillStyle = grd;
+  bctx.fillRect(beamX-90,0,180,H);
+  bctx.fillStyle = 'rgba(255,220,160,'+(a*0.9)+')';
+  bctx.fillRect(beamX-1.5,0,3,H);
+  bctx.restore();
+}
+
+/* ---------------- FOREGROUND: semantic text + chromatic aberration ---------------- */
+var mutCount = 0, mutTimes = [], nextMut = 0;
+function mutate(now){
+  if (!fragments.length) return;
+  var f = fragments[(Math.random()*fragments.length)|0];
+  var gs = f.slots.filter(function(s){ return s.g !== undefined; });
+  if (!gs.length) return;
+  var slot = gs[(Math.random()*gs.length)|0];
+  slot.w = pickWord(slot.g, slot.w);
+  mutCount++;
+  mutTimes.push(now);
+}
+function mutRate(now){
+  while (mutTimes.length && now - mutTimes[0] > 4000) mutTimes.shift();
+  return mutTimes.length / 4;
+}
+
+function drawAberrated(txt, x, y, hue, pe){
+  var dx = calmMode ? 1 : 2 + pe*3 + Math.random()*1.5;
+  fctx.globalCompositeOperation = 'lighter';
+  fctx.fillStyle = 'hsla('+((hue+140)%360)+',95%,58%,0.75)';
+  fctx.fillText(txt, x+dx, y);
+  fctx.fillStyle = 'hsla('+((hue+320)%360)+',95%,58%,0.75)';
+  fctx.fillText(txt, x-dx, y);
+  fctx.fillStyle = 'hsla('+hue+',65%,82%,0.92)';
+  fctx.fillText(txt, x, y);
+  fctx.globalCompositeOperation = 'source-over';
+  return 3; // primitive count
+}
+
+var featEMA = 0, secEMA = 0;
+function drawFragments(t, feats){
+  var pe = Math.sqrt(S.paranoia/100);
+  fragments.forEach(function(f, fi){
+    var dx = Math.sin(t*0.0004*f.sp + f.ph)*6;
+    var dy = Math.cos(t*0.0003*f.sp*1.3 + f.ph)*4;
+    var hue = (f.hue + t*0.02 + fi*7) % 360;
+    var x = f.x + dx, y = f.y + dy;
+    fctx.font = '700 '+f.size+'px monospace';
+    fctx.textBaseline = 'middle';
+    var cursor = x;
+    f.slots.forEach(function(slot){
+      var txt = (slot.g !== undefined) ? slot.w : slot.s;
+      var wdt = fctx.measureText(txt+' ').width;
+      if (cursor + wdt > W - 280) { cursor = x; y += f.size + 5; }
+      feats.val += drawAberrated(txt, cursor, y, hue, pe);
+      cursor += wdt;
+    });
+  });
+}
+
+/* ---------------- PANEL LABELS + METRICS (all on canvas) ---------------- */
+function drawPanelLabels(){
+  fctx.textBaseline = 'middle';
+  var rows = panel.querySelectorAll('.ctl');
+  ctlRects = [];
+  rows.forEach(function(row, i){
+    var r = row.getBoundingClientRect();
+    var c = CFG[i];
+    fctx.font = '10px monospace';
+    fctx.fillStyle = 'hsla(30,90%,65%,0.95)';
+    fctx.fillText(c.k.toUpperCase(), r.left+2, r.top-6);
+    fctx.fillStyle = 'hsla(178,70%,65%,0.95)';
+    fctx.textAlign = 'right';
+    fctx.fillText(c.fmt(S[c.k]), r.right-2, r.top-6);
+    fctx.textAlign = 'left';
+  });
+  [bT,bC,bS].forEach(function(b){
+    var r = b.getBoundingClientRect();
+    fctx.font = '9px monospace';
+    fctx.fillStyle = 'hsla(38,95%,62%,0.95)';
+    fctx.textAlign = 'center';
+    fctx.fillText(b===bT?'TEMPORAL':(b===bC?'CALM':'SCRAPE'), r.left+r.width/2, r.top+r.height/2);
+    fctx.textAlign = 'left';
+  });
+}
+
+function drawMetrics(now, featsPerSec, rate){
+  var pe = Math.sqrt(S.paranoia/100);
+  var coherence = 100*Math.exp(-rate*0.45);
+  var anon = Math.min(100, Math.round(
+      30*Math.min(1, rate/8) +
+      25*Math.min(1, featsPerSec/3500) +
+      25*pe +
+      20*Math.min(1, S.jitter/10)));
+  var lines = [
+    'IDENTITY COHERENCE : ' + coherence.toFixed(1) + '%',
+    'SCRAMBLE FREQ     : ' + rate.toFixed(2) + ' mut/s (' + S.freq.toFixed(1) + ' Hz target)',
+    'VISUAL FEATURES   : ' + Math.round(featsPerSec) + ' /sec',
+    'ANONYMITY SCORE   : ' + anon + ' / 100',
+    'SEMANTIC MUTATIONS: ' + mutCount,
+    'DOM TEXT NODES    : 0 (extraction defeated)'
+  ];
+  var bx = 14, by = H - 14 - lines.length*17;
+  fctx.fillStyle = 'rgba(8,6,4,0.55)';
+  fctx.fillRect(bx-8, by-16, 268, lines.length*17 + 22);
+  fctx.font = '11px monospace';
+  fctx.textBaseline = 'middle';
+  lines.forEach(function(ln, i){
+    fctx.fillStyle = 'hsla('+(30+i*6)+',85%,'+(60+((i%2)*8))+'%,0.95)';
+    fctx.fillText(ln, bx, by + i*17);
+  });
+}
+
+/* ---------------- TEMPORAL MEDIAN DEFENSE TEST ---------------- */
+var testing = false;
+var ov = document.getElementById('overlay'), octx = ov.getContext('2d');
+function nextFrame(){ return new Promise(function(res){ requestAnimationFrame(res); }); }
+bT.addEventListener('click', async function(){
+  if (testing) return;
+  testing = true; bT.disabled = true;
+  var tw = Math.ceil(W*0.25), th = Math.ceil(H*0.25);
+  var samples = [];
+  for (var i=0;i<30;i++){
+    await nextFrame();
+    var c = document.createElement('canvas'); c.width=tw; c.height=th;
+    var cx = c.getContext('2d', {willReadFrequently:true});
+    cx.drawImage(fgc, 0, 0, tw, th);
+    samples.push(cx.getImageData(0,0,tw,th).data);
+  }
+  var out = new Uint8ClampedArray(tw*th*4);
+  var bucket = new Uint8Array(30);
+  var pxCount = tw*th;
+  for (var p=0; p<pxCount; p++){
+    for (var ch=0; ch<3; ch++){
+      for (var s=0; s<30; s++) bucket[s] = samples[s][p*4+ch];
+      var arr = Array.prototype.slice.call(bucket).sort(function(a,b){return a-b;});
+      out[p*4+ch] = arr[15];
+    }
+    out[p*4+3] = 255;
+  }
+  var lum = 0, lum2 = 0;
+  for (var p2=0; p2<pxCount; p2++){
+    var l = 0.299*out[p2*4] + 0.587*out[p2*4+1] + 0.114*out[p2*4+2];
+    lum += l; lum2 += l*l;
+  }
+  var mean = lum/pxCount;
+  var residual = Math.sqrt(Math.max(0, lum2/pxCount - mean*mean));
+  var verdict = residual < 14 ? 'NO LEGIBLE SIGNAL — visual noise only'
+              : 'PARTIAL RESIDUE ' + residual.toFixed(1) + ' — increase scramble freq';
+  ov.width = W; ov.height = H; ov.style.display = 'block';
+  octx.drawImage((function(){ var c=document.createElement('canvas'); c.width=tw; c.height=th;
+    c.getContext('2d').putImageData(new ImageData(out, tw, th), 0, 0); return c; })(), 0, 0, W, H);
+  octx.fillStyle = 'rgba(8,6,4,0.75)'; octx.fillRect(0, H-70, W, 70);
+  octx.font = '700 15px monospace'; octx.fillStyle = '#ffb347';
+  octx.fillText('TEMPORAL MEDIAN — 30 FRAME MEDIAN COMPOSITE', 20, H-44);
+  octx.font = '12px monospace'; octx.fillStyle = '#2fa8a0';
+  octx.fillText('residual luminance stdev: ' + residual.toFixed(2) + '  |  verdict: ' + verdict, 20, H-20);
+  setTimeout(function(){ ov.style.display='none'; testing=false; bT.disabled=false; }, 6000);
+});
+
+/* ---------------- SCRAPE TEST (prove DOM extraction returns nothing) ---------------- */
+var scrapeMsgUntil = 0, scrapeMsg = '';
+bS.addEventListener('click', function(){
+  var textNodes = 0;
+  var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+  var n;
+  while ((n = walker.nextNode())) { if (n.nodeValue.trim().length) textNodes++; }
+  var inner = document.body.innerText || '';
+  scrapeMsg = 'SCRAPER SIMULATION: body text nodes=' + textNodes +
+              ' | innerText="' + inner.trim().slice(0,40) + '" (' + inner.trim().length + ' chars)' +
+              ' | XPath/text extraction: DEFEATED';
+  scrapeMsgUntil = performance.now() + 6000;
+});
+
+bC.addEventListener('click', function(){ calmMode = !calmMode; });
+
+/* ---------------- MAIN LOOP: jitter + occasional yield ---------------- */
+var lastT = performance.now(), frameN = 0;
+function frame(t){
+  frameN++;
+  /* paranoia via sqrt — multiplicative load stays bounded */
+  var pe = Math.sqrt(S.paranoia/100);
+  var feats = {val: 0};
+
+  /* background */
+  bctx.fillStyle = '#0b0906';
+  bctx.fillRect(0,0,W,H);
+  blobs.forEach(function(b){ drawBlob(b, t, feats); });
+  drawBeam(t, pe);
+
+  /* mutation scheduler: 200–600 ms semantic cadence scaled by freq slider */
+  if (t >= nextMut){
+    mutate(t);
+    var base = 1000 / Math.max(0.5, S.freq);
+    nextMut = t + Math.max(40, Math.min(1200, base*(0.5 + Math.random())));
+  }
+  var rate = mutRate(t);
+
+  /* foreground */
+  fctx.clearRect(0,0,W,H);
+  drawFragments(t, feats);
+  drawPanelLabels();
+  var dt = Math.max(1, t - lastT); lastT = t;
+  var inst = feats.val / (dt/1000);
+  featEMA = featEMA ? featEMA*0.92 + inst*0.08 : inst;
+  drawMetrics(t, featEMA, rate);
+  if (performance.now() < scrapeMsgUntil){
+    fctx.font = '11px monospace'; fctx.fillStyle = 'hsla(178,80%,60%,0.95)';
+    fctx.fillText(scrapeMsg, 14, H - (6*17) - 40);
+  }
+
+  /* frame jitter + yield: smears timing into noise (CPU fingerprint mitigation) */
+  var target = calmMode ? 33 : 16;
+  var jit = calmMode ? 0 : Math.random()*S.jitter;
+  var yieldMs = (!calmMode && frameN % 41 === 0) ? 4 : 0;   // occasional yield
+  setTimeout(function(){ requestAnimationFrame(frame); }, target + jit + yieldMs);
+}
+requestAnimationFrame(frame);
+
+/* pause when hidden — mobile memory safety */
+document.addEventListener('visibilitychange', function(){
+  if (!document.hidden) { lastT = performance.now(); }
+});
+
+/* ---------------- PUBLIC API: expandable paraphrase engine ---------------- */
+window.ScrambleSuit = {
+  addGroup: function(id, words){
+    GROUPS.push({id: id.toUpperCase(), words: words.slice()});
+    GIDX[id.toUpperCase()] = GROUPS.length-1;
+  },
+  addTemplate: function(tokens){
+    TEMPLATES.push(tokens.map(function(x){return String(x);}));
+    fragments.push(makeFragment(TEMPLATES.length-1));
+  },
+  stats: function(){ return {mutations: mutCount, fragments: fragments.length,
+    blobs: blobs.length, calm: calmMode, mobile: MOBILE}; },
+  setCalm: function(v){ calmMode = !!v; }
+};
+})();
+</script>
+</body>
+</html>
